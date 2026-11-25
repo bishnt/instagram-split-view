@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Instagram Split View",
+  "version": "1.0.0",
+  "description": "Keeps only your Instagram Home feed and DMs, side by side in one tab (50/50). Everything else is removed.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
