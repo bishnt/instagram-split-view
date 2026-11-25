@@ -38,6 +38,8 @@ and filter for `igsv` to see what the script found (docked panel, docked chat, .
 
 - Instagram's markup uses obfuscated class names and changes often, so everything is matched
   by links, labels and layout. Expect to tweak things now and then.
+- If Messages can't be docked (pill missing or not opening), the right half shows **Try again**
+  and **Open full inbox** instead of staying blank.
 - The docked panel relies on Instagram's Messages pill being on the feed. If Instagram opens
   the full-page inbox instead, you get that page full width with a **‹ Feed** button.
 - Unofficial tool, not affiliated with Instagram/Meta.
