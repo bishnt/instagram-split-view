@@ -1,56 +1,63 @@
-# Instagram Split View
+# Instagram Minimal
 
-A Chrome / Brave / Edge extension (Manifest V3). **One click opens Instagram Home and
-Instagram DMs side by side in one window**, using the browser's native **Split View**:
+A Chrome / Brave / Edge extension (Manifest V3). **One tab:** your Home feed on the left,
+your DMs on the right, nothing else.
 
-| Left half | Right half |
-|-----------|------------|
-| Home feed | Direct messages (DMs) |
+No window tiling, no browser Split View, no toolbar button. Open `instagram.com` and
+the page is the split view.
 
-Everything else (Explore, Reels, Search, Notifications, Profile, Create, story tray,
-suggestions, the floating Messages pill, ...) is hidden, and those pages are
-**inaccessible by route too**: typing e.g. `instagram.com/explore/`, `/reels/`, `/p/...`
-or a profile URL redirects straight back.
+| Left | Right |
+|------|-------|
+| Home feed | Direct messages |
+
+## What's removed
+
+- Navigation rail / bottom bar (Explore, Reels, Search, Notifications, Create, Profile)
+- Instagram and Meta logos, footers
+- Story tray, "Suggested for you", the suggestions column
+- Sponsored posts
+- The floating Messages pill (DMs already live on the right)
+- Scrollbars
+
+Other pages (`/explore/`, `/reels/`, `/p/...`, profiles) redirect back to Home, both at
+the network level (`rules.json`) and inside each pane.
+
+## Layout
+
+- Drag the divider to resize; double-click it (or press **Home** while it's focused) to
+  reset to 50/50. Arrow keys nudge it. Your choice is remembered.
+- Colours follow your system light / dark setting.
+- Logged out, you get a single full-width login pane; the DMs pane loads once you're in.
 
 ## Install (developer mode)
 
 1. Clone or download this repo.
 2. Open `chrome://extensions` (or `brave://extensions` / `edge://extensions`).
 3. Turn on **Developer mode** and click **Load unpacked**; select this folder.
-4. Click the extension's toolbar icon (or press **Alt+Shift+I**).
-
-Log in as usual; both tabs share your session.
-
-## Requirements
-
-The Split View extension API (`chrome.tabs.createSplit`) shipped in **Chrome 155**.
-Check your version at `chrome://version` (`brave://version`). If your browser doesn't have
-the API yet, the extension still opens the two tabs next to each other and shows a
-notification; use the browser's own split-view menu on those tabs, and the hiding /
-route-blocking still applies to each.
+4. Open <https://www.instagram.com/>.
 
 ## How it works
 
-- `background.js` opens two adjacent tabs (Home, then DMs), remembers which is which and
-  joins them with `chrome.tabs.createSplit`.
-- `content.js` runs in each tab with a role (`home` or `dm`): it hides Instagram's nav,
-  blocks links to other sections, and bounces any route change back to the tab's page.
-- `rules.json` (declarativeNetRequest) redirects any top-level navigation other than `/`,
-  `/direct/` and the login paths (`/accounts/`, `/challenge/`, `/auth_platform/`) to `/`
-  before the page loads.
+- `rules.json` redirects every top-level page except `/` and the login paths to `/`,
+  swaps Instagram's own scripts out of the top document (so only the shell runs), and
+  removes `X-Frame-Options` / CSP from Instagram's frames so the two panes can load.
+- `content.js` in the top document builds the shell: two same-origin frames and a divider.
+  Inside each frame it strips the UI listed above and blocks links to other sections.
+- Instagram's desktop layout reserves space on the left for its nav rail. The pane
+  measures the rail, hides it, and tells the shell to shift the frame left by that width so
+  no empty gutter remains.
 
 ## Customising
 
-At the top of `content.js`:
-- `HIDE_SELECTORS` - add selectors for anything Instagram shows that you want gone.
-- `NAV_LINK_SELECTORS` - links used to find (and hide) the main navigation.
-- `ALWAYS_ALLOWED` - paths that are always allowed (login / checkpoint flows).
-
-Instagram changes its markup often and uses obfuscated class names, so some selectors may
-need updating over time.
+At the top of `content.js`, under **Things to remove**: `NAV_LINKS`, `SIDEBAR_LINKS`,
+`HIDE_LINKS`, `CLUTTER_TEXT`, `AD_TEXT`. Add to them when Instagram changes its markup.
+Text matches (`Suggested for you`, `Sponsored`) are English.
 
 ## Known limitations
 
-- A small blank gutter can remain on the left of each pane where the nav bar used to be.
+- Instagram's markup uses obfuscated class names and changes often, so selectors are based
+  on links, labels and layout rather than classes. Expect to tweak them now and then.
+- If Instagram refuses to render inside a frame, the extension retries with `<object>` and
+  then shows a short message in the pane.
 - Links to posts/reels shared inside DMs are blocked.
-- This is an unofficial tool, not affiliated with Instagram/Meta.
+- Unofficial tool, not affiliated with Instagram/Meta.
