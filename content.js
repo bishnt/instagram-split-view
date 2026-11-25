@@ -88,7 +88,14 @@
       margin: 0 !important; transform: none !important; border-radius: 0 !important; box-shadow: none !important;
     }
     [data-igsv] > * { max-height: none !important; }
+    /* list on the left of the right half, active chat beside it; other open chats stay hidden */
+    html { --igsv-list: 340px; }
+    html.igsv-chat [data-igsv="dock"] { width: var(--igsv-list) !important; border-right: 1px solid rgba(128,128,128,.22) !important; }
+    [data-igsv="chat"], [data-igsv="chat-bg"] {
+      inset: 0 0 0 calc(50vw + var(--igsv-list)) !important; width: calc(50vw - var(--igsv-list)) !important;
+    }
     [data-igsv="chat"] { z-index: 2147483000 !important; }
+    [data-igsv="chat-bg"] { visibility: hidden !important; pointer-events: none !important; }
 
     /* right half placeholder while Messages is opening (or if it can't be docked) */
     .igsv-fallback {
@@ -450,15 +457,66 @@
     }
   }
 
-  // Chat windows Instagram opens next to the panel: dock them over it (close = back to list).
+  // Chat windows Instagram opens next to the panel: docked beside the conversation list.
+  // Only the active chat is shown; opening or focusing another conversation switches to it.
+  let activeChat = null;
+  let chatSeq = 0;
+  const hasInput = (box) => !!box.querySelector('[role="textbox"], textarea, [contenteditable="true"]');
+
   function dockChats() {
+    // Chats that lost their input (minimised or closed) go back to Instagram's own layout.
+    document.querySelectorAll('[data-igsv^="chat"]').forEach((box) => {
+      if (!box.isConnected || hasInput(box)) return;
+      box.removeAttribute('data-igsv');
+      if (box === activeChat) activeChat = null;
+    });
     document.querySelectorAll('[role="textbox"], textarea, [contenteditable="true"]').forEach((inp) => {
       const box = outerFixed(inp);
-      if (!box || box.hasAttribute('data-igsv') || hasMain(box)) return;
-      box.setAttribute('data-igsv', 'chat');
+      if (!box || hasMain(box)) return;
+      const kind = box.getAttribute('data-igsv');
+      if (kind === 'dock') return; // the panel's own search box
+      if (kind) return;            // already a chat
+      box.setAttribute('data-igsv', 'chat-bg');
+      box.setAttribute('data-igsv-seq', String(++chatSeq));
+      activeChat = box; // the newest window is the one just opened
       log('docked chat', box);
     });
+    if (activeChat && !activeChat.isConnected) activeChat = null;
+    document.querySelectorAll('[data-igsv^="chat"]').forEach((box) => {
+      const want = box === activeChat ? 'chat' : 'chat-bg';
+      if (box.getAttribute('data-igsv') !== want) box.setAttribute('data-igsv', want);
+    });
+    root.classList.toggle('igsv-chat', !!activeChat);
   }
+
+  // Focusing another chat's input (Instagram does this when a conversation is opened or
+  // restored) makes it the visible one.
+  document.addEventListener(
+    'focusin',
+    (e) => {
+      const box = e.target && e.target.closest && e.target.closest('[data-igsv^="chat"]');
+      if (box && box !== activeChat) { activeChat = box; dockChats(); }
+    },
+    true
+  );
+  // Clicking a row in the list for a conversation that is already open: show that chat.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const t = e.target;
+      if (!t || !t.closest || !t.closest('[data-igsv="dock"]')) return;
+      const row = t.closest('[role="button"], [role="listitem"], a, [tabindex]');
+      const name = row && (row.innerText || '').split('\n').map((x) => x.trim()).find(Boolean);
+      if (!name) return;
+      setTimeout(() => {
+        const text = (c) => c.textContent || '';
+        if (activeChat && activeChat.isConnected && text(activeChat).includes(name)) return;
+        const hit = Array.from(document.querySelectorAll('[data-igsv^="chat"]')).find((c) => text(c).includes(name));
+        if (hit && hit !== activeChat) { activeChat = hit; dockChats(); }
+      }, 300);
+    },
+    true
+  );
 
   /* ---------- Main strip pass ---------- */
 
@@ -545,9 +603,25 @@
     }
   }
 
+  // Dock chat windows (and re-dock a re-rendered panel) before the next paint, so switching
+  // conversations never flashes Instagram's own floating layout.
+  let rafPending = false;
+  let hadDock = false;
+  const fast = () => {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (route() !== 'home') return;
+      dockChats();
+      const dock = document.querySelector('[data-igsv="dock"]');
+      if (dock) hadDock = true;
+      else if (hadDock) { hadDock = false; lastSweep = 0; stripUi(); }
+    });
+  };
   const start = () => {
     stripUi();
-    new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(() => { fast(); schedule(); }).observe(document.documentElement, { childList: true, subtree: true });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
