@@ -19,6 +19,8 @@
 
   const FLOW_PATHS = ['/accounts/', '/challenge/', '/auth_platform/']; // login / checkpoint
   const MIN_PANEL_H = 150; // a Messages box shorter than this is the collapsed pill
+  const MAX_PILL_CLICKS = 5; // attempts to open the Messages pill before showing the fallback
+  const PILL_RETRY_MS = 3000;
 
   // ---------------- Things to remove ----------------
   // Links that identify the main navigation (the fixed bar around them is retired).
@@ -72,6 +74,18 @@
     }
     [data-igsv] > * { max-height: none !important; }
     [data-igsv="chat"] { z-index: 2147483000 !important; }
+
+    /* right half placeholder while Messages is opening (or if it can't be docked) */
+    .igsv-fallback {
+      position: fixed; top: 0; right: 0; bottom: 0; left: 50vw; z-index: 1; box-sizing: border-box; padding: 24px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+      font: 400 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: inherit; opacity: .85;
+    }
+    .igsv-fallback a, .igsv-fallback button {
+      font: 600 13px/1.4 inherit; font-family: inherit; color: inherit; cursor: pointer; text-decoration: none;
+      padding: 6px 14px; border-radius: 999px; border: 0; background: rgba(128,128,128,.22);
+    }
+    .igsv-fallback .igsv-actions { display: flex; gap: 8px; }
 
     /* shown only if Instagram opens the full-page inbox */
     .igsv-back {
@@ -177,9 +191,49 @@
 
   let pillClicks = 0;
   let pillClickAt = 0;
+  let fallback = null;
+  const sweepStart = Date.now();
 
-  // Finds Instagram's floating Messages pill / panel. Opens the pill once, then docks
-  // the expanded panel into the right half.
+  // Right-half placeholder: never leave the right side blank or broken.
+  function showFallback(failed) {
+    if (!document.body) return;
+    if (!fallback) {
+      fallback = document.createElement('div');
+      fallback.className = 'igsv-fallback';
+      document.body.appendChild(fallback);
+    }
+    const state = failed ? 'failed' : 'opening';
+    if (fallback.getAttribute('data-state') === state) return;
+    fallback.setAttribute('data-state', state);
+    fallback.textContent = '';
+    const msg = document.createElement('div');
+    fallback.appendChild(msg);
+    if (!failed) {
+      msg.textContent = 'Opening Messages…';
+      return;
+    }
+    msg.textContent = 'Couldn’t dock Messages here.';
+    const actions = document.createElement('div');
+    actions.className = 'igsv-actions';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Try again';
+    retry.addEventListener('click', () => { pillClicks = 0; pillClickAt = 0; lastSweep = 0; schedule(); });
+    const full = document.createElement('a');
+    full.href = '/direct/inbox/';
+    full.textContent = 'Open full inbox';
+    actions.append(retry, full);
+    fallback.appendChild(actions);
+  }
+  function hideFallback() {
+    if (fallback) { fallback.remove(); fallback = null; }
+  }
+
+  // The element React actually listens on is usually the button around the label.
+  const clickTarget = (leaf) => leaf.closest('[role="button"], button, a[href], [tabindex]') || leaf;
+
+  // Finds Instagram's floating Messages pill / panel. Opens the pill (retrying a few
+  // times), then docks the expanded panel into the right half.
   function dockMessages() {
     let panel = null;
     let pill = null;
@@ -196,13 +250,25 @@
     if (panel) {
       if (!panel.hasAttribute('data-igsv')) { panel.setAttribute('data-igsv', 'dock'); log('docked panel', panel); }
       if (pill && pill.box !== panel) hide(pill.box);
-    } else if (pill && pillClicks < 2 && Date.now() - pillClickAt > 6000) {
-      pillClicks++;
-      pillClickAt = Date.now();
-      log('opening Messages pill');
-      pill.leaf.click();
-      // Dock the panel as soon as it appears instead of waiting for the next sweep.
-      [250, 700, 1500].forEach((ms) => setTimeout(() => { lastSweep = 0; schedule(); }, ms));
+      hideFallback();
+      return;
+    }
+
+    if (pill && pillClicks < MAX_PILL_CLICKS) {
+      showFallback(false);
+      if (Date.now() - pillClickAt > PILL_RETRY_MS) {
+        pillClicks++;
+        pillClickAt = Date.now();
+        log('opening Messages pill, attempt', pillClicks);
+        clickTarget(pill.leaf).click();
+        // Dock the panel as soon as it appears instead of waiting for the next sweep.
+        [250, 700, 1500].forEach((ms) => setTimeout(() => { lastSweep = 0; schedule(); }, ms));
+      }
+    } else if (!pill && pillClicks === 0 && Date.now() - sweepStart < 8000) {
+      showFallback(false); // pill not rendered yet; keep sweeping for a few seconds
+    } else {
+      log('Messages did not dock', { pill: !!pill, pillClicks });
+      showFallback(true);
     }
   }
 
@@ -253,7 +319,7 @@
       });
     });
 
-    if (r !== 'home') return;
+    if (r !== 'home') { hideFallback(); return; }
 
     dockChats();
 
