@@ -8,9 +8,9 @@ so this reworks the real page instead:
 
 - The page is narrowed to the left half of the window and shows your feed.
 - Instagram's own floating **Messages** panel (the pill at the bottom right of the feed) is
-  opened automatically and docked to the full height of the right half. When you open a
-  conversation, the list stays on the left and the chat fills the rest; click another
-  conversation in the list to switch. Only one chat is shown at a time.
+  opened automatically and docked to the full height of the right half. An open
+  chat covers the whole right half; use ‹ to go back to the list and pick another
+  conversation. Only one chat is shown at a time.
 
 ## Browsing
 

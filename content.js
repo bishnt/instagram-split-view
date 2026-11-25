@@ -88,13 +88,9 @@
       margin: 0 !important; transform: none !important; border-radius: 0 !important; box-shadow: none !important;
     }
     [data-igsv] > * { max-height: none !important; }
-    /* list on the left of the right half, active chat beside it; other open chats stay hidden */
-    html { --igsv-list: 340px; }
-    html.igsv-chat [data-igsv="dock"] { width: var(--igsv-list) !important; border-right: 1px solid rgba(128,128,128,.22) !important; }
-    [data-igsv="chat"], [data-igsv="chat-bg"] {
-      inset: 0 0 0 calc(50vw + var(--igsv-list)) !important; width: calc(50vw - var(--igsv-list)) !important;
-    }
-    [data-igsv="chat"] { z-index: 2147483000 !important; }
+    /* an open chat covers the whole right half (‹ goes back to the list); other open chats stay hidden */
+    [data-igsv="chat"] { z-index: 2147483000 !important; visibility: visible !important; }
+    html.igsv-chat [data-igsv="dock"] { visibility: hidden !important; } /* nothing of the list shows through */
     [data-igsv="chat-bg"] { visibility: hidden !important; pointer-events: none !important; }
 
     /* right half placeholder while Messages is opening (or if it can't be docked) */
