@@ -32,6 +32,8 @@
   // Visible text that marks clutter on Home (exact match on a single element).
   const CLUTTER_TEXT = ['Suggested for you'];
   const AD_TEXT = 'Sponsored';
+  // Anything that marks the story tray.
+  const STORY_SELECTORS = ['a[href^="/stories/"]', '[aria-label^="Story by"]', '[aria-label*="story" i][role="button"]'];
   // --------------------------------------------------
 
   const root = document.documentElement;
@@ -58,6 +60,19 @@
     html.igsv-home, html.igsv-dm { overflow-x: hidden !important; }
     html.igsv-home body, html.igsv-dm body { margin-left: calc(var(--igsv-rail, 0px) * -1) !important; }
     html.igsv-home body { margin-right: 50vw !important; }
+
+    /* left half: no scrolling; posts are stepped with the arrow buttons / keys */
+    html.igsv-home { overflow-y: hidden !important; }
+    [data-igsv] { overscroll-behavior: contain !important; }
+    article[data-igsv-fit] { margin-left: auto !important; margin-right: auto !important; }
+    .igsv-nav button {
+      position: fixed; top: calc(50vh - 22px); z-index: 2147482000; width: 44px; height: 44px; padding: 0;
+      border: 0; border-radius: 50%; cursor: pointer; font: 400 28px/1 system-ui, sans-serif;
+      color: inherit; background: rgba(128,128,128,.28); backdrop-filter: blur(8px);
+    }
+    .igsv-nav button:hover { background: rgba(128,128,128,.45); }
+    .igsv-nav .igsv-prev { left: 10px; }
+    .igsv-nav .igsv-next { right: calc(50vw + 10px); }
 
     /* right half: a quiet surface behind the docked Messages panel */
     html.igsv-home::before {
@@ -101,6 +116,9 @@
   /* ---------- Route handling ---------- */
 
   let back = null;
+  let navEl = null; // carousel buttons
+  let cur = null; // current post
+  let loading = false;
   function applyRoute() {
     const r = route();
     root.classList.toggle('igsv-home', r === 'home');
@@ -115,8 +133,110 @@
       back.remove();
       back = null;
     }
+    ensureNav(r === 'home');
   }
   applyRoute();
+
+  /* ---------- Carousel: one post at a time, no scrolling ---------- */
+
+  const postList = () =>
+    Array.from(document.querySelectorAll('article')).filter(
+      (a) => a.style.display !== 'none' && a.offsetHeight > 0 && !a.closest('[role="dialog"]')
+    );
+  function nearest(list) {
+    const mid = innerHeight / 2;
+    let best = null;
+    let bd = Infinity;
+    list.forEach((a) => {
+      const r = a.getBoundingClientRect();
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bd) { bd = d; best = a; }
+    });
+    return best;
+  }
+  // Centre a post in the left half, shrinking it (CSS zoom) if it is taller than the window.
+  function show(art) {
+    document.querySelectorAll('article[data-igsv-fit]').forEach((a) => {
+      a.style.removeProperty('zoom');
+      a.removeAttribute('data-igsv-fit');
+    });
+    const h = art.offsetHeight;
+    const z = Math.min(1, (innerHeight - 24) / (h || 1));
+    if (z < 1) {
+      art.style.setProperty('zoom', z.toFixed(3), 'important');
+      art.setAttribute('data-igsv-fit', '1');
+    }
+    cur = art;
+    art.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }
+  // Past the last loaded post: scroll to the end so Instagram fetches more, then step on.
+  function loadMore(last) {
+    if (loading) return;
+    loading = true;
+    let tries = 0;
+    const kick = () => {
+      const se = document.scrollingElement;
+      if (se) se.scrollTop = se.scrollHeight;
+      last.scrollIntoView({ block: 'end', behavior: 'instant' });
+    };
+    kick();
+    const poll = () => {
+      const l = postList();
+      const i = l.indexOf(last);
+      if (i >= 0 && l[i + 1]) { loading = false; show(l[i + 1]); return; }
+      if (++tries > 8) { loading = false; show(last); return; }
+      if (tries % 3 === 0) kick();
+      setTimeout(poll, 500);
+    };
+    setTimeout(poll, 500);
+  }
+  function step(dir) {
+    const list = postList();
+    if (!list.length) return;
+    const i = cur && list.includes(cur) ? list.indexOf(cur) : list.indexOf(nearest(list));
+    const j = i + dir;
+    if (j < 0) return;
+    if (j >= list.length) loadMore(list[list.length - 1]);
+    else show(list[j]);
+  }
+
+  function ensureNav(on) {
+    if (on && !navEl && document.body) {
+      navEl = document.createElement('div');
+      navEl.className = 'igsv-nav';
+      [['igsv-prev', '‹', 'Previous post', -1], ['igsv-next', '›', 'Next post', 1]].forEach(([c, t, l, d]) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = c; b.textContent = t; b.setAttribute('aria-label', l);
+        b.addEventListener('click', () => step(d));
+        navEl.appendChild(b);
+      });
+      document.body.appendChild(navEl);
+    } else if (!on && navEl) {
+      navEl.remove();
+      navEl = null;
+    }
+  }
+
+  // Scrolling is locked on Home (wheel, touch, keys); the docked Messages panel and dialogs still scroll.
+  const typing = (t) =>
+    !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '') || (t.closest && t.closest('[role="textbox"]')));
+  const inDock = (t) => !!(t && t.closest && t.closest('[data-igsv], [role="dialog"]'));
+  const lock = (e) => {
+    if (route() !== 'home' || e.ctrlKey || inDock(e.target)) return;
+    e.preventDefault();
+  };
+  window.addEventListener('wheel', lock, { passive: false, capture: true });
+  window.addEventListener('touchmove', lock, { passive: false, capture: true });
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (route() !== 'home' || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || inDock(e.target)) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+      else if ([' ', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) e.preventDefault();
+    },
+    true
+  );
 
   // 1) Links to anywhere else do nothing.
   document.addEventListener(
@@ -192,6 +312,24 @@
     }
     return null;
   }
+
+  // Anything sitting above the first post in the feed column (the story tray and its
+  // arrows) is removed, whatever it is built from.
+  function hideAboveFeed() {
+    const first = document.querySelector('article');
+    if (!first) return;
+    let n = first;
+    for (let i = 0; i < 8 && n && n.parentElement; i++) {
+      if (n.tagName === 'MAIN' || n.getAttribute('role') === 'main') break;
+      for (let sib = n.previousElementSibling; sib; sib = sib.previousElementSibling) {
+        if (sib.querySelector('article') || sib.hasAttribute('data-igsv')) continue;
+        const r = sib.getBoundingClientRect();
+        if (r.height > 0 && r.height < 260) hide(sib);
+      }
+      n = n.parentElement;
+    }
+  }
+  const inDockOrDialog = (el) => !!el.closest('[data-igsv], [role="dialog"]');
 
   /* ---------- Messages panel ---------- */
 
@@ -372,10 +510,13 @@
 
     dockMessages();
 
-    // Story tray and suggestions column.
-    document.querySelectorAll('a[href^="/stories/"]').forEach((a) => {
-      if (!a.closest('article')) hide(feedBranch(a));
+    // Story tray (removed completely) and suggestions column.
+    STORY_SELECTORS.forEach((sel) => {
+      document.querySelectorAll(sel).forEach((a) => {
+        if (!a.closest('article') && !inDockOrDialog(a)) hide(feedBranch(a) || a);
+      });
     });
+    hideAboveFeed();
     SIDEBAR_LINKS.forEach((sel) => {
       document.querySelectorAll(sel).forEach((a) => {
         if (!a.closest('article')) hide(feedBranch(a));
@@ -396,6 +537,12 @@
       );
       if (ad) hide(art);
     });
+
+    // Carousel: make sure a post is centred and fitted.
+    if (!cur || !cur.isConnected || cur.style.display === 'none') {
+      const l = postList();
+      if (l.length) show(nearest(l));
+    }
   }
 
   const start = () => {

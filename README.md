@@ -11,11 +11,17 @@ so this reworks the real page instead:
   opened automatically and docked to the full height of the right half. Chat windows it
   opens are docked over it; close one to get back to the list.
 
+## Browsing
+
+The left half shows **one post at a time**, with no scrolling: use the **‹ ›** buttons or the
+**← →** arrow keys. Posts taller than the window are shrunk to fit. At the last loaded post,
+**›** fetches more.
+
 ## What's removed
 
 - Navigation rail / bottom bar (Explore, Reels, Search, Notifications, Create, Profile)
 - Instagram and Meta logos, footers
-- Story tray, "Suggested for you", the suggestions column
+- Story tray (completely), "Suggested for you", the suggestions column
 - Sponsored posts
 - Scrollbars
 
