@@ -27,7 +27,7 @@ Log in as usual; both panes share your session.
 1. **Network level** (`rules.json`, declarativeNetRequest): any top-level
    navigation on instagram.com other than `/` (and the login/checkpoint paths
    `/accounts/`, `/challenge/`, `/auth_platform/`) is redirected to `/` before the
-   page loads. Inside the panes only `/` and `/direct/` can load.
+   page loads. 
 2. **Content script** (`content.js`): blocks link clicks to other sections and
    catches in-app (pushState) route changes, sending each pane back to its own page.
 
@@ -63,3 +63,10 @@ selectors may need updating over time.
 - Links to posts/reels shared inside DMs are blocked (no other section is reachable).
 - Only `www.instagram.com` is covered; Instagram's own redirect from `instagram.com` goes through `www` first, so it ends up blocked too.
 - This is an unofficial tool, not affiliated with Instagram/Meta.
+
+## If a pane says "Instagram refuses to render inside this pane"
+
+Instagram may refuse to render when framed. The shell first embeds each pane as an
+`<iframe>`, and if Instagram shows its "page isn't available" screen it retries with an
+`<object>` embed (see `EMBED_METHODS` in `content.js`). The console logs each attempt
+under `[IG Split View]`.
