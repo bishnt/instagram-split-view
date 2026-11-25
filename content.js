@@ -408,6 +408,9 @@
   // Finds Instagram's floating Messages pill / panel. Opens the pill (retrying a few
   // times), then docks the expanded panel into the right half.
   function dockMessages() {
+    // Instagram's widget flips between the list and an open chat (‹ goes back) inside one
+    // container, and the "Messages" label is absent in chat view. Once it is docked, keep it.
+    if (document.querySelector('[data-igsv="dock"]')) { hideFallback(); return; }
     let panel = null;
     let pill = null;
     document.querySelectorAll('span, div').forEach((leaf) => {
@@ -474,8 +477,15 @@
       const box = outerFixed(inp);
       if (!box || hasMain(box)) return;
       const kind = box.getAttribute('data-igsv');
-      if (kind === 'dock') return; // the panel's own search box
-      if (kind) return;            // already a chat
+      if (kind) return; // the widget itself or an already-docked chat window
+      if (!document.querySelector('[data-igsv="dock"]')) {
+        // Chat view of the single Messages widget: this container is the dock.
+        box.setAttribute('data-igsv', 'dock');
+        hideFallback();
+        log('docked widget (chat view)', box);
+        return;
+      }
+      // A separate chat window next to an already-docked list.
       box.setAttribute('data-igsv', 'chat-bg');
       box.setAttribute('data-igsv-seq', String(++chatSeq));
       activeChat = box; // the newest window is the one just opened
