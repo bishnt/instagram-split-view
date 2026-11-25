@@ -1,32 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Instagram Split View",
-  "version": "3.0.0",
-  "description": "One click opens Instagram Home and DMs side by side in one window using the browser's native Split View. Everything else is removed and blocked, including by URL.",
+  "name": "Instagram Minimal",
+  "version": "4.0.0",
+  "description": "Instagram in one tab: Home feed on the left, DMs on the right. No logos, no navigation, no clutter.",
   "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
-  "permissions": ["declarativeNetRequest", "storage", "notifications"],
+  "permissions": ["declarativeNetRequest"],
   "host_permissions": ["https://www.instagram.com/*"],
-  "background": { "service_worker": "background.js" },
-  "action": {
-    "default_title": "Open Instagram: Home | DMs",
-    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png" }
-  },
-  "commands": {
-    "_execute_action": {
-      "suggested_key": { "default": "Alt+Shift+I" },
-      "description": "Open Instagram split view (Home | DMs)"
-    }
-  },
   "declarative_net_request": {
     "rule_resources": [
-      { "id": "block_other_routes", "enabled": true, "path": "rules.json" }
+      { "id": "shell_rules", "enabled": true, "path": "rules.json" }
     ]
   },
   "content_scripts": [
     {
       "matches": ["https://www.instagram.com/*"],
       "js": ["content.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true
     }
   ]
 }
