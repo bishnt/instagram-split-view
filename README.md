@@ -43,7 +43,7 @@ Log in as usual; both panes share your session.
 
 Instagram refuses to be embedded by other sites, so the extension runs *on*
 instagram.com. In the top frame it replaces the page with a 50/50 shell holding
-two same-origin iframes (`/` and `/direct/inbox/`). A response-header rule gives the top-level page a CSP that disables Instagram's own scripts there, so the shell can be built cleanly. A content script inside each
+two same-origin iframes (`/` and `/direct/inbox/`). A response-header rule gives the top-level page a CSP that disables Instagram's own scripts there, so the shell can be built cleanly. Another rule strips `X-Frame-Options` / CSP `frame-ancestors` from the two pane requests, because Instagram otherwise refuses to be shown in a frame ("refused to connect"). A content script inside each
 pane hides Instagram's navigation and blocks links to other sections.
 
 ## Customising

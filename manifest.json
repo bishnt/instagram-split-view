@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Instagram Split View",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Keeps only your Instagram Home feed and DMs, side by side in one tab (50/50). Everything else is removed and blocked, including by URL.",
   "permissions": [
     "declarativeNetRequest"

@@ -95,5 +95,32 @@
         "main_frame"
       ]
     }
+  },
+  {
+    "id": 7,
+    "priority": 3,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        {
+          "header": "x-frame-options",
+          "operation": "remove"
+        },
+        {
+          "header": "content-security-policy",
+          "operation": "remove"
+        },
+        {
+          "header": "content-security-policy-report-only",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/",
+      "resourceTypes": [
+        "sub_frame"
+      ]
+    }
   }
 ]
