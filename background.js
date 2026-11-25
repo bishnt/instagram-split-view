@@ -1,7 +1,12 @@
 /*
  * Instagram Split View - background service worker
- * Click the toolbar icon (or press Alt+Shift+I) to open two windows tiled
- * side by side: Home on the left half, DMs on the right half.
+ *
+ * Click the toolbar icon (or press Alt+Shift+I):
+ *   - opens Instagram Home and Instagram DMs as two adjacent tabs, and
+ *   - joins them into the browser's native Split View (chrome.tabs.createSplit,
+ *     Chrome 155+), Home on the left half and DMs on the right half.
+ * If the browser has no Split View API yet, the two tabs are still opened side by
+ * side in the tab strip and a notification explains how to split them manually.
  */
 const HOME_URL = 'https://www.instagram.com/';
 const DM_URL = 'https://www.instagram.com/direct/inbox/';
@@ -10,68 +15,66 @@ chrome.action.onClicked.addListener(() => {
   openSplit().catch((e) => console.error('[IG Split View]', e));
 });
 
-// Content scripts ask which role (home | dm) their window has.
+// Content scripts ask which role (home | dm) their tab has.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'igsv-role') {
     chrome.storage.session.get('split').then(({ split }) => {
-      const wid = sender.tab && sender.tab.windowId;
-      if (split && wid === split.homeId) sendResponse('home');
-      else if (split && wid === split.dmId) sendResponse('dm');
+      const id = sender.tab && sender.tab.id;
+      if (split && id === split.homeTabId) sendResponse('home');
+      else if (split && id === split.dmTabId) sendResponse('dm');
       else sendResponse(null);
     });
     return true; // async response
   }
 });
 
-async function getWorkArea() {
-  const win = await chrome.windows.getLastFocused().catch(() => null);
-  try {
-    const displays = await chrome.system.display.getInfo();
-    if (win && win.left != null && win.width) {
-      const cx = win.left + win.width / 2;
-      const cy = win.top + win.height / 2;
-      const hit = displays.find(
-        (d) =>
-          cx >= d.bounds.left && cx < d.bounds.left + d.bounds.width &&
-          cy >= d.bounds.top && cy < d.bounds.top + d.bounds.height
-      );
-      if (hit) return hit.workArea;
-    }
-    const primary = displays.find((d) => d.isPrimary) || displays[0];
-    if (primary) return primary.workArea;
-  } catch (e) {
-    console.warn('[IG Split View] display info unavailable', e);
-  }
-  // Fallback: use the last focused window's own area.
-  if (win && win.width) return { left: win.left, top: win.top, width: win.width, height: win.height };
-  return { left: 0, top: 0, width: 1920, height: 1040 };
-}
+const getTab = (id) =>
+  id == null ? Promise.resolve(null) : chrome.tabs.get(id).catch(() => null);
 
 async function openSplit() {
-  const wa = await getWorkArea();
-  const half = Math.floor(wa.width / 2);
-  const leftBounds = { left: wa.left, top: wa.top, width: half, height: wa.height };
-  const rightBounds = { left: wa.left + half, top: wa.top, width: wa.width - half, height: wa.height };
-
   const { split } = await chrome.storage.session.get('split');
-  const state = { homeId: split && split.homeId, dmId: split && split.dmId };
+  let home = await getTab(split && split.homeTabId);
+  let dm = await getTab(split && split.dmTabId);
 
-  state.homeId = await ensureWindow(state.homeId, HOME_URL, leftBounds);
-  await chrome.storage.session.set({ split: state });
-  state.dmId = await ensureWindow(state.dmId, DM_URL, rightBounds);
-  await chrome.storage.session.set({ split: state });
+  const win = await chrome.windows.getLastFocused().catch(() => null);
+  const windowId = home ? home.windowId : win ? win.id : undefined;
+
+  if (!home) home = await chrome.tabs.create({ url: HOME_URL, windowId, active: true });
+  if (!dm) dm = await chrome.tabs.create({ url: DM_URL, windowId: home.windowId, index: home.index + 1, active: false });
+  await chrome.storage.session.set({ split: { homeTabId: home.id, dmTabId: dm.id } });
+
+  // Split View needs the two tabs next to each other (Home first, DMs second).
+  if (dm.windowId !== home.windowId || dm.index !== home.index + 1) {
+    dm = await chrome.tabs.move(dm.id, { windowId: home.windowId, index: home.index + 1 });
+    dm = Array.isArray(dm) ? dm[0] : dm;
+  }
+
+  if (typeof chrome.tabs.createSplit !== 'function') {
+    notify('Your browser has no Split View API yet (needs Chrome 155+ or a matching Chromium). ' +
+      'The two tabs are open next to each other: use the browser\'s own split view to show them side by side.');
+    await chrome.tabs.update(home.id, { active: true });
+    return;
+  }
+
+  try {
+    await chrome.tabs.createSplit([home.id, dm.id]);
+  } catch (e) {
+    // Most likely already in a split view (button pressed twice) - verify before complaining.
+    const [h, d] = await Promise.all([getTab(home.id), getTab(dm.id)]);
+    const same = h && d && h.splitViewId != null && h.splitViewId === d.splitViewId && h.splitViewId !== -1;
+    if (!same) {
+      console.error('[IG Split View] createSplit failed', e);
+      notify('Could not create the split view: ' + (e && e.message ? e.message : e));
+    }
+  }
+  await chrome.tabs.update(home.id, { active: true });
 }
 
-// Re-use (and re-tile) an existing window if it's still open, else create it.
-async function ensureWindow(id, url, bounds) {
-  if (id != null) {
-    try {
-      await chrome.windows.update(id, { ...bounds, state: 'normal', focused: true });
-      return id;
-    } catch (_) { /* window was closed */ }
-  }
-  const w = await chrome.windows.create({ url, type: 'popup', focused: true, ...bounds });
-  // Some platforms ignore position/size on create; enforce it.
-  try { await chrome.windows.update(w.id, bounds); } catch (_) {}
-  return w.id;
+function notify(message) {
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: 'Instagram Split View',
+    message,
+  });
 }

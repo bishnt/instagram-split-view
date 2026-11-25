@@ -1,7 +1,7 @@
 # Instagram Split View
 
-A Chrome / Brave / Edge extension (Manifest V3). **One click tiles two windows side by
-side:**
+A Chrome / Brave / Edge extension (Manifest V3). **One click opens Instagram Home and
+Instagram DMs side by side in one window**, using the browser's native **Split View**:
 
 | Left half | Right half |
 |-----------|------------|
@@ -18,17 +18,23 @@ or a profile URL redirects straight back.
 2. Open `chrome://extensions` (or `brave://extensions` / `edge://extensions`).
 3. Turn on **Developer mode** and click **Load unpacked**; select this folder.
 4. Click the extension's toolbar icon (or press **Alt+Shift+I**).
-   Home opens on the left half of the screen and DMs on the right half.
 
-Log in as usual; both windows share your session. Clicking the icon again re-tiles the
-windows (or reopens one you closed).
+Log in as usual; both tabs share your session.
+
+## Requirements
+
+The Split View extension API (`chrome.tabs.createSplit`) shipped in **Chrome 155**.
+Check your version at `chrome://version` (`brave://version`). If your browser doesn't have
+the API yet, the extension still opens the two tabs next to each other and shows a
+notification; use the browser's own split-view menu on those tabs, and the hiding /
+route-blocking still applies to each.
 
 ## How it works
 
-- `background.js` opens two popup windows sized to the left / right half of the screen's
-  work area and remembers which is which.
-- `content.js` runs in each window with a role (`home` or `dm`): it hides Instagram's nav,
-  blocks links to other sections, and bounces any route change back to the window's page.
+- `background.js` opens two adjacent tabs (Home, then DMs), remembers which is which and
+  joins them with `chrome.tabs.createSplit`.
+- `content.js` runs in each tab with a role (`home` or `dm`): it hides Instagram's nav,
+  blocks links to other sections, and bounces any route change back to the tab's page.
 - `rules.json` (declarativeNetRequest) redirects any top-level navigation other than `/`,
   `/direct/` and the login paths (`/accounts/`, `/challenge/`, `/auth_platform/`) to `/`
   before the page loads.
@@ -45,8 +51,6 @@ need updating over time.
 
 ## Known limitations
 
-- A small blank gutter can remain on the left of each window where the nav bar used to be.
+- A small blank gutter can remain on the left of each pane where the nav bar used to be.
 - Links to posts/reels shared inside DMs are blocked.
-- Some Linux window managers / Wayland compositors ignore requested window positions; if the
-  windows don't land on the right halves, snap them with your OS tiling shortcuts.
 - This is an unofficial tool, not affiliated with Instagram/Meta.
