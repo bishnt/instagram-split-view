@@ -39,7 +39,16 @@
   const isTop = window.top === window.self;
 
   if (isTop) {
-    buildShell();
+    const path = location.pathname;
+    if (path === '/') {
+      buildShell();
+    } else if (!ALWAYS_ALLOWED.some((p) => path.startsWith(p))) {
+      // Fallback for the network-level rules (rules.json): any other route
+      // typed or followed in the top frame goes back to the split view.
+      try { window.stop(); } catch (_) {}
+      location.replace(HOME_URL);
+    }
+    // else: login / checkpoint pages render normally, full width.
   } else if (window.name === HOME_PANE || window.name === DM_PANE) {
     initPane(window.name);
   }

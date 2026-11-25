@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "redirect", "redirect": { "url": "https://www.instagram.com/" } },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/.+",
+      "resourceTypes": ["main_frame"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 2,
+    "action": { "type": "allow" },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/(\\?.*)?$",
+      "resourceTypes": ["main_frame", "sub_frame"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 2,
+    "action": { "type": "allow" },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/(accounts|challenge|auth_platform)/",
+      "resourceTypes": ["main_frame", "sub_frame"]
+    }
+  },
+  {
+    "id": 4,
+    "priority": 1,
+    "action": { "type": "redirect", "redirect": { "url": "https://www.instagram.com/" } },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/.+",
+      "resourceTypes": ["sub_frame"]
+    }
+  },
+  {
+    "id": 5,
+    "priority": 2,
+    "action": { "type": "allow" },
+    "condition": {
+      "regexFilter": "^https://www\\.instagram\\.com/direct/",
+      "resourceTypes": ["sub_frame"]
+    }
+  }
+]

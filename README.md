@@ -8,7 +8,9 @@ two-pane layout inside a single tab:
 | Home feed | Direct messages (DMs) |
 
 Everything else (Explore, Reels, Search, Notifications, Profile, Create, story
-tray, suggestions, etc.) is hidden, and navigation to those pages is blocked.
+tray, suggestions, etc.) is hidden, and those pages are **inaccessible by route
+too**: typing e.g. `instagram.com/explore/`, `/reels/`, `/p/...` or a profile URL
+redirects straight back to the split view.
 
 ## Install (developer mode)
 
@@ -19,6 +21,15 @@ tray, suggestions, etc.) is hidden, and navigation to those pages is blocked.
 5. Open https://www.instagram.com/ — you'll get Home on the left, DMs on the right.
 
 Log in as usual; both panes share your session.
+
+## How routes are blocked
+
+1. **Network level** (`rules.json`, declarativeNetRequest): any top-level
+   navigation on instagram.com other than `/` (and the login/checkpoint paths
+   `/accounts/`, `/challenge/`, `/auth_platform/`) is redirected to `/` before the
+   page loads. Inside the panes only `/` and `/direct/` can load.
+2. **Content script** (`content.js`): blocks link clicks to other sections and
+   catches in-app (pushState) route changes, sending each pane back to its own page.
 
 ## How it works
 
@@ -42,4 +53,5 @@ selectors may need updating over time.
 
 - A small blank gutter can remain on the left of each pane where the hidden nav bar used to sit.
 - Links to posts/reels shared inside DMs are blocked (no other section is reachable).
+- Only `www.instagram.com` is covered; Instagram's own redirect from `instagram.com` goes through `www` first, so it ends up blocked too.
 - This is an unofficial tool, not affiliated with Instagram/Meta.
