@@ -1,72 +1,52 @@
 # Instagram Split View
 
-A Chrome/Edge extension (Manifest V3) that turns instagram.com into a focused
-two-pane layout inside a single tab:
+A Chrome / Brave / Edge extension (Manifest V3). **One click tiles two windows side by
+side:**
 
 | Left half | Right half |
 |-----------|------------|
 | Home feed | Direct messages (DMs) |
 
-Everything else (Explore, Reels, Search, Notifications, Profile, Create, story
-tray, suggestions, etc.) is hidden, and those pages are **inaccessible by route
-too**: typing e.g. `instagram.com/explore/`, `/reels/`, `/p/...` or a profile URL
-redirects straight back to the split view.
+Everything else (Explore, Reels, Search, Notifications, Profile, Create, story tray,
+suggestions, the floating Messages pill, ...) is hidden, and those pages are
+**inaccessible by route too**: typing e.g. `instagram.com/explore/`, `/reels/`, `/p/...`
+or a profile URL redirects straight back.
 
 ## Install (developer mode)
 
 1. Clone or download this repo.
-2. Open `chrome://extensions` (or `edge://extensions`).
-3. Turn on **Developer mode**.
-4. Click **Load unpacked** and select this folder.
-5. Open https://www.instagram.com/ — you'll get Home on the left, DMs on the right.
+2. Open `chrome://extensions` (or `brave://extensions` / `edge://extensions`).
+3. Turn on **Developer mode** and click **Load unpacked**; select this folder.
+4. Click the extension's toolbar icon (or press **Alt+Shift+I**).
+   Home opens on the left half of the screen and DMs on the right half.
 
-Log in as usual; both panes share your session.
-
-## How routes are blocked
-
-1. **Network level** (`rules.json`, declarativeNetRequest): any top-level
-   navigation on instagram.com other than `/` (and the login/checkpoint paths
-   `/accounts/`, `/challenge/`, `/auth_platform/`) is redirected to `/` before the
-   page loads. 
-2. **Content script** (`content.js`): blocks link clicks to other sections and
-   catches in-app (pushState) route changes, sending each pane back to its own page.
-
-## Troubleshooting
-
-- **Blank page?** Open `chrome://extensions` / `brave://extensions`, click **Reload** on the
-  extension, then hard-refresh Instagram (Ctrl+Shift+R). Check the extension's **Errors** button
-  for rule/permission problems. If it still fails, open DevTools on the Instagram tab and look
-  for `[IG Split View]` messages in the console.
-- Brave: make sure the extension is allowed on `www.instagram.com` (Site access → On all sites / on click).
+Log in as usual; both windows share your session. Clicking the icon again re-tiles the
+windows (or reopens one you closed).
 
 ## How it works
 
-Instagram refuses to be embedded by other sites, so the extension runs *on*
-instagram.com. In the top frame it replaces the page with a 50/50 shell holding
-two same-origin iframes (`/` and `/direct/inbox/`). A response-header rule gives the top-level page a CSP that disables Instagram's own scripts there, so the shell can be built cleanly. Another rule strips `X-Frame-Options` / CSP `frame-ancestors` from the two pane requests, because Instagram otherwise refuses to be shown in a frame ("refused to connect"). A content script inside each
-pane hides Instagram's navigation and blocks links to other sections.
+- `background.js` opens two popup windows sized to the left / right half of the screen's
+  work area and remembers which is which.
+- `content.js` runs in each window with a role (`home` or `dm`): it hides Instagram's nav,
+  blocks links to other sections, and bounces any route change back to the window's page.
+- `rules.json` (declarativeNetRequest) redirects any top-level navigation other than `/`,
+  `/direct/` and the login paths (`/accounts/`, `/challenge/`, `/auth_platform/`) to `/`
+  before the page loads.
 
 ## Customising
 
-All the tweakable bits are at the top of `content.js`:
+At the top of `content.js`:
+- `HIDE_SELECTORS` - add selectors for anything Instagram shows that you want gone.
+- `NAV_LINK_SELECTORS` - links used to find (and hide) the main navigation.
+- `ALWAYS_ALLOWED` - paths that are always allowed (login / checkpoint flows).
 
-- `HIDE_SELECTORS` — add selectors for anything Instagram shows that you want gone.
-- `NAV_LINK_SELECTORS` — links used to find (and hide) the main navigation.
-- `ALWAYS_ALLOWED` — paths that are always allowed (login/checkpoint flows).
-
-Instagram changes its markup often and uses obfuscated class names, so some
-selectors may need updating over time.
+Instagram changes its markup often and uses obfuscated class names, so some selectors may
+need updating over time.
 
 ## Known limitations
 
-- A small blank gutter can remain on the left of each pane where the hidden nav bar used to sit.
-- Links to posts/reels shared inside DMs are blocked (no other section is reachable).
-- Only `www.instagram.com` is covered; Instagram's own redirect from `instagram.com` goes through `www` first, so it ends up blocked too.
+- A small blank gutter can remain on the left of each window where the nav bar used to be.
+- Links to posts/reels shared inside DMs are blocked.
+- Some Linux window managers / Wayland compositors ignore requested window positions; if the
+  windows don't land on the right halves, snap them with your OS tiling shortcuts.
 - This is an unofficial tool, not affiliated with Instagram/Meta.
-
-## If a pane says "Instagram refuses to render inside this pane"
-
-Instagram may refuse to render when framed. The shell first embeds each pane as an
-`<iframe>`, and if Instagram shows its "page isn't available" screen it retries with an
-`<object>` embed (see `EMBED_METHODS` in `content.js`). The console logs each attempt
-under `[IG Split View]`.

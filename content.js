@@ -1,20 +1,19 @@
 /*
- * Instagram Split View
- * --------------------
- * Top frame  -> replaced by a 50/50 shell holding two same-origin panes:
- *                 left  = Home feed   (instagram.com/)
- *                 right = Direct msgs (instagram.com/direct/inbox/)
- * Inside each pane -> the navigation (Explore, Reels, Search, Profile, ...) is
- *                 hidden and navigation to any page other than the pane's own
- *                 page is blocked.
+ * Instagram Split View - content script (top frames of www.instagram.com)
+ *
+ * Each window has a role:
+ *   home -> only the Home feed ("/")           is reachable
+ *   dm   -> only Direct messages ("/direct/")  is reachable
+ * Navigation (Explore, Reels, Search, Profile, ...) is hidden, links to other
+ * sections are blocked, and stray route changes are bounced back.
  *
  * Instagram's DOM changes often. If something reappears, add a selector to
  * HIDE_SELECTORS below.
  */
 (() => {
   'use strict';
+  if (window.top !== window.self) return;
 
-  const LOG = (...a) => console.log('[IG Split View]', ...a);
   const HOME_URL = '/';
   const DM_URL = '/direct/inbox/';
 
@@ -31,186 +30,74 @@
   ];
   // Paths always allowed (login / checkpoint flows).
   const ALWAYS_ALLOWED = ['/accounts/', '/challenge/', '/auth_platform/'];
-  // How a pane is embedded, tried in order if Instagram shows its
-  // "page isn't available" screen for the previous method.
-  const EMBED_METHODS = ['iframe', 'object'];
   // ------------------------------------------
 
-  const isTop = window.top === window.self;
+  const startsWithAny = (path, list) => list.some((p) => path.startsWith(p));
+  const pathRole = () => (location.pathname.startsWith('/direct/') ? 'dm' : 'home');
 
-  if (isTop) {
-    const path = location.pathname;
-    if (path === '/') {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', buildShell, { once: true });
-      } else {
-        buildShell();
-      }
-    } else if (!ALWAYS_ALLOWED.some((p) => path.startsWith(p))) {
-      location.replace(HOME_URL);
-    }
-  } else {
-    let pane = null;
-    try { pane = window.frameElement && window.frameElement.getAttribute('data-ig-pane'); } catch (_) {}
-    if (pane) initPane(pane);
-  }
+  // Initial guess from the path (null on login pages); refined by the background script.
+  let role = startsWithAny(location.pathname, ALWAYS_ALLOWED) ? null : pathRole();
 
-  /* ===================== Top-level shell ===================== */
+  const isAllowed = (path) => {
+    if (startsWithAny(path, ALWAYS_ALLOWED)) return true;
+    if (!role) return true;
+    return role === 'home' ? path === '/' : path.startsWith('/direct/');
+  };
+  const rolePath = () => (role === 'dm' ? DM_URL : HOME_URL);
 
-  function buildShell() {
-    LOG('building shell');
-    const root = document.documentElement;
-    while (root.firstChild) root.removeChild(root.firstChild);
-    root.style.background = '#000';
-
-    const head = document.createElement('head');
-    const title = document.createElement('title');
-    title.textContent = 'Instagram';
-    head.appendChild(title);
-
-    const body = document.createElement('body');
-    Object.assign(body.style, {
-      margin: '0', height: '100vh', width: '100vw',
-      display: 'flex', background: '#000', overflow: 'hidden',
-    });
-    root.append(head, body);
-
-    const mkSlot = () => {
-      const s = document.createElement('div');
-      Object.assign(s.style, { flex: '1 1 50%', width: '50%', height: '100%', position: 'relative' });
-      return s;
-    };
-    const divider = document.createElement('div');
-    Object.assign(divider.style, { flex: '0 0 1px', background: 'rgba(128,128,128,0.35)' });
-
-    const home = mountPane(mkSlot(), 'home', HOME_URL);
-    const dm = mountPane(mkSlot(), 'dm', DM_URL);
-    body.append(home.slot, divider, dm.slot);
-
-    // After logging in on one pane, bring the other pane out of the login page.
-    setInterval(() => {
+  // Ask the background script which window we are in (opened by the toolbar button).
+  (async () => {
+    for (let i = 0; i < 3; i++) {
       try {
-        const hp = home.el().contentWindow.location.pathname;
-        const dp = dm.el().contentWindow.location.pathname;
-        const hLogin = hp.startsWith('/accounts/');
-        const dLogin = dp.startsWith('/accounts/');
-        if (dLogin && !hLogin) dm.navigate(DM_URL);
-        if (hLogin && !dLogin) home.navigate(HOME_URL);
-      } catch (_) { /* frame mid-navigation */ }
-    }, 1500);
-  }
-
-  // Embeds `src` in `slot`. If Instagram renders its "page isn't available"
-  // screen, retry with the next EMBED_METHODS entry.
-  function mountPane(slot, pane, src) {
-    let methodIdx = 0;
-    let current = null;
-
-    function show(msg) {
-      slot.textContent = '';
-      const d = document.createElement('div');
-      Object.assign(d.style, {
-        color: '#ccc', font: '14px/1.5 system-ui, sans-serif', padding: '24px',
-        maxWidth: '420px', margin: '20vh auto 0', textAlign: 'center',
-      });
-      d.textContent = msg;
-      slot.appendChild(d);
+        const r = await chrome.runtime.sendMessage({ type: 'igsv-role' });
+        if (r) { role = r; return; }
+      } catch (_) { /* extension reloaded or worker waking up */ }
+      await new Promise((res) => setTimeout(res, 400));
     }
+  })();
 
-    function attempt(url) {
-      const method = EMBED_METHODS[methodIdx];
-      slot.textContent = '';
-      let el;
-      if (method === 'object') {
-        el = document.createElement('object');
-        el.type = 'text/html';
-        el.data = url;
-      } else {
-        el = document.createElement('iframe');
-        el.allow = 'clipboard-write; autoplay; fullscreen; microphone; camera';
-        el.src = url;
+  // 1) Block clicks on links leading anywhere else.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      let url;
+      try { url = new URL(a.getAttribute('href'), location.href); } catch (_) { return; }
+      if (url.origin !== location.origin) return; // external links behave normally
+      if (!isAllowed(url.pathname)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
       }
-      el.setAttribute('data-ig-pane', pane);
-      Object.assign(el.style, {
-        width: '100%', height: '100%', border: '0', margin: '0', background: '#000', display: 'block',
-      });
-      current = el;
-      el.addEventListener('load', () => setTimeout(() => check(el, url, method), 3000));
-      slot.appendChild(el);
-      LOG(pane, 'loading via', method);
+    },
+    true
+  );
+
+  // 2) Catch route changes that slipped through (SPA pushState, modals, etc.).
+  setInterval(() => {
+    if (!isAllowed(location.pathname)) location.replace(rolePath());
+  }, 400);
+
+  // 3) After logging in, leave the login page (the login cookie is shared by both windows).
+  setInterval(() => {
+    if (location.pathname.startsWith('/accounts/login') && /(?:^|;\s*)ds_user_id=/.test(document.cookie)) {
+      location.replace(role ? rolePath() : HOME_URL);
     }
+  }, 1500);
 
-    function check(el, url, method) {
-      if (el !== current) return;
-      let text = '';
-      try { text = (el.contentDocument && el.contentDocument.body && el.contentDocument.body.innerText) || ''; } catch (_) {}
-      if (/this page isn.?t available/i.test(text)) {
-        LOG(pane, 'Instagram refused to render via', method);
-        if (methodIdx < EMBED_METHODS.length - 1) {
-          methodIdx++;
-          attempt(url);
-        } else {
-          show('Instagram refuses to render inside this pane (tried: ' + EMBED_METHODS.join(', ') + ').');
-        }
-      }
-    }
-
-    attempt(src);
-    return {
-      slot,
-      el: () => current,
-      navigate: (url) => attempt(url),
-    };
-  }
-
-  /* ===================== Pane logic ===================== */
-
-  function initPane(pane) {
-    const isHome = pane === 'home';
-    const homePath = isHome ? HOME_URL : DM_URL;
-    LOG('pane ready:', pane);
-
-    const isAllowed = (path) => {
-      if (ALWAYS_ALLOWED.some((p) => path.startsWith(p))) return true;
-      return isHome ? path === '/' : path.startsWith('/direct/');
-    };
-
-    // 1) Block clicks on links leading anywhere else.
-    document.addEventListener(
-      'click',
-      (e) => {
-        const a = e.target && e.target.closest && e.target.closest('a[href]');
-        if (!a) return;
-        let url;
-        try { url = new URL(a.getAttribute('href'), location.href); } catch (_) { return; }
-        if (url.origin !== location.origin) return;
-        if (!isAllowed(url.pathname)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        }
-      },
-      true
-    );
-
-    // 2) Catch any route change that slipped through (SPA pushState, modals, etc.).
-    setInterval(() => {
-      if (!isAllowed(location.pathname)) location.replace(homePath);
-    }, 400);
-
-    // 3) Strip navigation + unwanted widgets as the SPA re-renders.
-    let scheduled = false;
-    const schedule = () => {
-      if (scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(() => { scheduled = false; stripUi(); });
-    };
-    const start = () => {
-      stripUi();
-      new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
-    };
-    if (document.documentElement) start();
-    else document.addEventListener('DOMContentLoaded', start, { once: true });
-  }
+  // 4) Strip navigation + unwanted widgets as the SPA re-renders.
+  let scheduled = false;
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; stripUi(); });
+  };
+  const start = () => {
+    stripUi();
+    new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  };
+  if (document.documentElement) start();
+  else document.addEventListener('DOMContentLoaded', start, { once: true });
 
   function hide(el) {
     if (el && el.style && el.style.display !== 'none') {
@@ -218,18 +105,21 @@
     }
   }
 
+  function fixedAncestor(el) {
+    let p = el;
+    while (p && p !== document.body && p !== document.documentElement) {
+      const pos = getComputedStyle(p).position;
+      if (pos === 'fixed' || pos === 'sticky') return p;
+      p = p.parentElement;
+    }
+    return null;
+  }
+
+  let lastPillCheck = 0;
   function stripUi() {
+    // Main nav: climb from a nav link to its fixed-position container and hide it.
     NAV_LINK_SELECTORS.forEach((sel) => {
-      document.querySelectorAll(sel).forEach((a) => {
-        let el = a;
-        let container = null;
-        while (el && el !== document.body && el !== document.documentElement) {
-          const pos = getComputedStyle(el).position;
-          if (pos === 'fixed' || pos === 'sticky') { container = el; break; }
-          el = el.parentElement;
-        }
-        hide(container || a);
-      });
+      document.querySelectorAll(sel).forEach((a) => hide(fixedAncestor(a) || a));
     });
 
     HIDE_SELECTORS.forEach((sel) => {
@@ -238,5 +128,19 @@
         hide(menu || el);
       });
     });
+
+    // The floating "Messages" pill: DMs live in their own window.
+    if (role === 'home') {
+      const now = Date.now();
+      if (now - lastPillCheck > 1000) {
+        lastPillCheck = now;
+        document.querySelectorAll('span, div').forEach((el) => {
+          if (el.children.length === 0 && el.textContent.trim() === 'Messages') {
+            const fx = fixedAncestor(el);
+            if (fx) hide(fx);
+          }
+        });
+      }
+    }
   }
 })();
