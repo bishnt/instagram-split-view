@@ -31,11 +31,19 @@ Log in as usual; both panes share your session.
 2. **Content script** (`content.js`): blocks link clicks to other sections and
    catches in-app (pushState) route changes, sending each pane back to its own page.
 
+## Troubleshooting
+
+- **Blank page?** Open `chrome://extensions` / `brave://extensions`, click **Reload** on the
+  extension, then hard-refresh Instagram (Ctrl+Shift+R). Check the extension's **Errors** button
+  for rule/permission problems. If it still fails, open DevTools on the Instagram tab and look
+  for `[IG Split View]` messages in the console.
+- Brave: make sure the extension is allowed on `www.instagram.com` (Site access → On all sites / on click).
+
 ## How it works
 
 Instagram refuses to be embedded by other sites, so the extension runs *on*
 instagram.com. In the top frame it replaces the page with a 50/50 shell holding
-two same-origin iframes (`/` and `/direct/inbox/`). A content script inside each
+two same-origin iframes (`/` and `/direct/inbox/`). A response-header rule gives the top-level page a CSP that disables Instagram's own scripts there, so the shell can be built cleanly. A content script inside each
 pane hides Instagram's navigation and blocks links to other sections.
 
 ## Customising

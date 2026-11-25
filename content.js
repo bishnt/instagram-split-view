@@ -41,11 +41,17 @@
   if (isTop) {
     const path = location.pathname;
     if (path === '/') {
-      buildShell();
+      // Instagram's own scripts are disabled for this document by a CSP header
+      // rule (rules.json, id 6), so we can safely wait for the HTML to finish
+      // parsing and then replace it with the split-view shell.
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', buildShell, { once: true });
+      } else {
+        buildShell();
+      }
     } else if (!ALWAYS_ALLOWED.some((p) => path.startsWith(p))) {
       // Fallback for the network-level rules (rules.json): any other route
       // typed or followed in the top frame goes back to the split view.
-      try { window.stop(); } catch (_) {}
       location.replace(HOME_URL);
     }
     // else: login / checkpoint pages render normally, full width.
@@ -56,10 +62,10 @@
   /* ===================== Top-level shell ===================== */
 
   function buildShell() {
-    try { window.stop(); } catch (_) {}
-
+    console.log('[IG Split View] building shell');
     const root = document.documentElement;
     while (root.firstChild) root.removeChild(root.firstChild);
+    root.style.background = '#000';
 
     const head = document.createElement('head');
     const title = document.createElement('title');
