@@ -22,41 +22,8 @@
     "priority": 2,
     "action": { "type": "allow" },
     "condition": {
-      "regexFilter": "^https://www\\.instagram\\.com/(accounts|challenge|auth_platform)/",
+      "regexFilter": "^https://www\\.instagram\\.com/(direct|accounts|challenge|auth_platform)/",
       "resourceTypes": ["main_frame"]
-    }
-  },
-  {
-    "id": 4,
-    "priority": 3,
-    "action": {
-      "type": "modifyHeaders",
-      "responseHeaders": [
-        { "header": "content-security-policy", "operation": "set", "value": "script-src 'none'; object-src 'self'; frame-src 'self'" },
-        { "header": "content-security-policy-report-only", "operation": "remove" },
-        { "header": "cross-origin-embedder-policy", "operation": "remove" },
-        { "header": "cross-origin-embedder-policy-report-only", "operation": "remove" }
-      ]
-    },
-    "condition": {
-      "regexFilter": "^https://www\\.instagram\\.com/(\\?.*)?$",
-      "resourceTypes": ["main_frame"]
-    }
-  },
-  {
-    "id": 5,
-    "priority": 3,
-    "action": {
-      "type": "modifyHeaders",
-      "responseHeaders": [
-        { "header": "x-frame-options", "operation": "remove" },
-        { "header": "content-security-policy", "operation": "remove" },
-        { "header": "content-security-policy-report-only", "operation": "remove" }
-      ]
-    },
-    "condition": {
-      "regexFilter": "^https://www\\.instagram\\.com/",
-      "resourceTypes": ["sub_frame", "object"]
     }
   }
 ]
