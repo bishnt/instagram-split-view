@@ -169,8 +169,14 @@
   // A tall bar pinned to the left edge is the nav rail (kept laid out, then pulled off
   // screen by the body margin); anything else (bottom bar, top bar) is removed.
   // Returns the rail width, or 0.
+  const MSG_SVG = 'svg[aria-label="Messages"], svg[aria-label="New message"]';
+  const inNavLink = (el) => !!el.closest('a[href^="/direct/"]');
+  // True if a fixed wrapper also holds the floating Messages widget (not just the nav link).
+  const hasMessagesWidget = (box) => Array.from(box.querySelectorAll(MSG_SVG)).some((n) => !inNavLink(n));
+
   function retire(box) {
     if (!box || hasMain(box)) return 0;
+    if (hasMessagesWidget(box)) { log('kept wrapper that holds Messages widget', box); return 0; }
     const r = box.getBoundingClientRect();
     if (!r.width && !r.height) return 0;
     if (r.height > r.width && r.left <= 1) { quiet(box); return Math.round(r.right); }
@@ -232,6 +238,28 @@
   // The element React actually listens on is usually the button around the label.
   const clickTarget = (leaf) => leaf.closest('[role="button"], button, a[href], [tabindex]') || leaf;
 
+  // One-time console report (always visible, filter for igsv): where the Messages
+  // elements are and what hides them (this extension's inline style vs Instagram).
+  let diagnosed = false;
+  function diagnose() {
+    if (diagnosed) return;
+    diagnosed = true;
+    const rows = Array.from(document.querySelectorAll(MSG_SVG + ', a[href^="/direct/"]')).map((el) => {
+      let hiddenBy = 'visible';
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden') {
+          const ours = n.style.display === 'none' || n.style.visibility === 'hidden';
+          hiddenBy = (ours ? 'EXTENSION' : 'instagram') + ' <' + n.tagName.toLowerCase() + '>';
+          break;
+        }
+      }
+      const r = el.getBoundingClientRect();
+      return { el: el.tagName + ' ' + (el.getAttribute('aria-label') || el.getAttribute('href') || ''), hiddenBy, rect: Math.round(r.width) + 'x' + Math.round(r.height) + '@' + Math.round(r.left) + ',' + Math.round(r.top) };
+    });
+    console.log('[igsv] diagnose', JSON.stringify(rows, null, 1));
+  }
+
   // Finds Instagram's floating Messages pill / panel. Opens the pill (retrying a few
   // times), then docks the expanded panel into the right half.
   function dockMessages() {
@@ -245,6 +273,17 @@
       if (box.hasAttribute('data-igsv')) { panel = panel || box; return; }
       if (box.getBoundingClientRect().height >= MIN_PANEL_H) panel = panel || box;
       else pill = pill || { box, leaf };
+    });
+    // Instagram may label the widget only through an <svg aria-label>, with no text element.
+    document.querySelectorAll(MSG_SVG).forEach((icon) => {
+      if (inNavLink(icon)) return;
+      const box = outerFixed(icon);
+      if (!box || hasMain(box)) return;
+      if (box.hasAttribute('data-igsv')) { panel = panel || box; return; }
+      const h = box.getBoundingClientRect().height;
+      if (!h) return; // hidden
+      if (h >= MIN_PANEL_H) panel = panel || box;
+      else pill = pill || { box, leaf: icon };
     });
 
     if (panel) {
@@ -268,6 +307,7 @@
       showFallback(false); // pill not rendered yet; keep sweeping for a few seconds
     } else {
       log('Messages did not dock', { pill: !!pill, pillClicks });
+      diagnose();
       showFallback(true);
     }
   }
