@@ -15,7 +15,7 @@ so this reworks the real page instead:
 ## Browsing
 
 The left half shows **one post at a time**, with no scrolling: use the **‹ ›** buttons or the
-**← →** arrow keys. Posts taller than the window are shrunk to fit. At the last loaded post,
+**← →** arrow keys. The post is centred in the left half, and posts taller than the window are shrunk to fit. Feed and inbox backgrounds are pitch black (`BG` / `SURFACES` at the top of `content.js`). At the last loaded post,
 **›** fetches more.
 
 ## What's removed

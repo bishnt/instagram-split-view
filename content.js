@@ -32,6 +32,9 @@
   // Visible text that marks clutter on Home (exact match on a single element).
   const CLUTTER_TEXT = ['Suggested for you'];
   const AD_TEXT = 'Sponsored';
+  // Backgrounds: Instagram's dark-theme surfaces (feed #0c1014, inbox/chat #212328) become this.
+  const BG = '#000';
+  const SURFACES = new Set(['rgb(12, 16, 20)', 'rgb(33, 35, 40)']);
   // Anything that marks the story tray.
   const STORY_SELECTORS = ['a[href^="/stories/"]', '[aria-label^="Story by"]', '[aria-label*="story" i][role="button"]'];
   // --------------------------------------------------
@@ -58,13 +61,17 @@
 
     /* left half: the feed. The (hidden) nav rail's width is pulled off the left edge. */
     html.igsv-home, html.igsv-dm { overflow-x: hidden !important; }
-    html.igsv-home body, html.igsv-dm body { margin-left: calc(var(--igsv-rail, 0px) * -1) !important; }
-    html.igsv-home body { margin-right: 50vw !important; }
+    html.igsv-dm body { margin-left: calc(var(--igsv-rail, 0px) * -1) !important; }
+    /* --igsv-shift nudges the feed so the post is centred in the left half (width stays constant) */
+    html.igsv-home body {
+      margin-left: calc(var(--igsv-rail, 0px) * -1 + var(--igsv-shift, 0px)) !important;
+      margin-right: calc(50vw - var(--igsv-shift, 0px)) !important;
+    }
+    html.igsv-home, html.igsv-home body { background: #000 !important; }
 
     /* left half: no scrolling; posts are stepped with the arrow buttons / keys */
     html.igsv-home { overflow-y: hidden !important; }
     [data-igsv] { overscroll-behavior: contain !important; }
-    article[data-igsv-fit] { margin-left: auto !important; margin-right: auto !important; }
     .igsv-nav button {
       position: fixed; top: calc(50vh - 22px); z-index: 2147482000; width: 44px; height: 44px; padding: 0;
       border: 0; border-radius: 50%; cursor: pointer; font: 400 28px/1 system-ui, sans-serif;
@@ -77,7 +84,7 @@
     /* right half: a quiet surface behind the docked Messages panel */
     html.igsv-home::before {
       content: ""; position: fixed; top: 0; right: 0; bottom: 0; left: 50vw; pointer-events: none;
-      background: rgba(128,128,128,.06); border-left: 1px solid rgba(128,128,128,.22);
+      border-left: 1px solid rgba(128,128,128,.22);
     }
 
     /* Messages panel and chat windows, docked to the right half */
@@ -157,20 +164,40 @@
     });
     return best;
   }
-  // Centre a post in the left half, shrinking it (CSS zoom) if it is taller than the window.
+  // Centre a post in the left half, shrinking it (scaled about its centre) if it is taller
+  // than the window.
+  let shift = 0;
+  function centerFeed() {
+    const a = cur && cur.isConnected ? cur : postList()[0];
+    if (!a) return;
+    const r = a.getBoundingClientRect();
+    if (!r.width) return;
+    const delta = innerWidth / 4 - (r.left + r.width / 2);
+    if (Math.abs(delta) < 2) return;
+    shift += delta;
+    root.style.setProperty('--igsv-shift', Math.round(shift) + 'px');
+  }
+  addEventListener('resize', () => {
+    shift = 0;
+    root.style.removeProperty('--igsv-shift');
+    setTimeout(centerFeed, 150);
+  });
   function show(art) {
     document.querySelectorAll('article[data-igsv-fit]').forEach((a) => {
-      a.style.removeProperty('zoom');
+      a.style.removeProperty('transform');
+      a.style.removeProperty('transform-origin');
       a.removeAttribute('data-igsv-fit');
     });
     const h = art.offsetHeight;
     const z = Math.min(1, (innerHeight - 24) / (h || 1));
     if (z < 1) {
-      art.style.setProperty('zoom', z.toFixed(3), 'important');
+      art.style.setProperty('transform-origin', '50% 50%', 'important');
+      art.style.setProperty('transform', 'scale(' + z.toFixed(3) + ')', 'important');
       art.setAttribute('data-igsv-fit', '1');
     }
     cur = art;
     art.scrollIntoView({ block: 'center', behavior: 'instant' });
+    centerFeed();
   }
   // Past the last loaded post: scroll to the end so Instagram fetches more, then step on.
   function loadMore(last) {
@@ -431,7 +458,7 @@
     });
 
     if (panel) {
-      if (!panel.hasAttribute('data-igsv')) { panel.setAttribute('data-igsv', 'dock'); log('docked panel', panel); }
+      if (!panel.hasAttribute('data-igsv')) { panel.setAttribute('data-igsv', 'dock'); log('docked panel', panel); paintTree(panel); }
       if (pill && pill.box !== panel) hide(pill.box);
       hideFallback();
       return;
@@ -477,12 +504,14 @@
       if (!document.querySelector('[data-igsv="dock"]')) {
         // Chat view of the single Messages widget: this container is the dock.
         box.setAttribute('data-igsv', 'dock');
+        paintTree(box);
         hideFallback();
         log('docked widget (chat view)', box);
         return;
       }
       // A separate chat window next to an already-docked list.
       box.setAttribute('data-igsv', 'chat-bg');
+      paintTree(box);
       box.setAttribute('data-igsv-seq', String(++chatSeq));
       activeChat = box; // the newest window is the one just opened
       log('docked chat', box);
@@ -523,6 +552,23 @@
     },
     true
   );
+
+  /* ---------- Backgrounds ---------- */
+
+  // Instagram paints its surfaces through its own variables; recolour whatever resolves to
+  // them (exact match only, so message bubbles and media keep their colours).
+  function paint(n) {
+    if (SURFACES.has(getComputedStyle(n).backgroundColor)) n.style.setProperty('background-color', BG, 'important');
+  }
+  function paintTree(el) {
+    if (!el || el.nodeType !== 1) return;
+    paint(el);
+    el.querySelectorAll('*').forEach(paint);
+  }
+  // Containers around the feed.
+  function paintAncestors(el) {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) paint(n);
+  }
 
   /* ---------- Main strip pass ---------- */
 
@@ -602,6 +648,10 @@
       if (ad) hide(art);
     });
 
+    const firstArt = document.querySelector('article');
+    if (firstArt) paintAncestors(firstArt);
+    centerFeed();
+
     // Carousel: make sure a post is centred and fitted.
     if (!cur || !cur.isConnected || cur.style.display === 'none') {
       const l = postList();
@@ -612,6 +662,7 @@
   // Dock chat windows (and re-dock a re-rendered panel) before the next paint, so switching
   // conversations never flashes Instagram's own floating layout.
   let rafPending = false;
+  const toPaint = new Set();
   let hadDock = false;
   const fast = () => {
     if (rafPending) return;
@@ -620,6 +671,8 @@
       rafPending = false;
       if (route() !== 'home') return;
       dockChats();
+      toPaint.forEach((n) => { if (n.isConnected) paintTree(n); });
+      toPaint.clear();
       const dock = document.querySelector('[data-igsv="dock"]');
       if (dock) hadDock = true;
       else if (hadDock) { hadDock = false; lastSweep = 0; stripUi(); }
@@ -627,7 +680,15 @@
   };
   const start = () => {
     stripUi();
-    new MutationObserver(() => { fast(); schedule(); }).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver((records) => {
+      for (const rec of records) {
+        rec.addedNodes.forEach((n) => {
+          if (n.nodeType === 1 && (n.hasAttribute('data-igsv') || (n.closest && n.closest('[data-igsv]')))) toPaint.add(n);
+        });
+      }
+      fast();
+      schedule();
+    }).observe(document.documentElement, { childList: true, subtree: true });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
